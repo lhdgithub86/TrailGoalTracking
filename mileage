@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cột Mốc — Mục tiêu Mileage &amp; Gain</title>
+<style>
+  :root{
+    --bg: #10171A;
+    --bg-elev: #16201F;
+    --line: #23302E;
+    --text: #E9EEEA;
+    --text-dim: #8FA39B;
+    --blaze: #E0A73B;   /* trail blaze orange-gold — mileage */
+    --blaze-dim: rgba(224,167,59,0.16);
+    --summit: #4FB0A0;  /* teal — elevation gain */
+    --summit-dim: rgba(79,176,160,0.16);
+    --danger: #D9705A;
+    --radius: 10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height:100vh;
+    background-image:
+      radial-gradient(circle at 15% 8%, rgba(79,176,160,0.05) 0, transparent 40%),
+      radial-gradient(circle at 85% 92%, rgba(224,167,59,0.05) 0, transparent 40%);
+  }
+  .topo{
+    position:fixed; inset:0; z-index:0; opacity:0.35; pointer-events:none;
+  }
+  .wrap{position:relative; z-index:1; max-width:760px; margin:0 auto; padding:28px 18px 80px;}
+  header{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:8px;}
+  header h1{
+    font-size:22px; margin:0; letter-spacing:0.02em; font-weight:700;
+  }
+  header h1 span{color:var(--blaze);}
+  #sync-badge{font-size:11px; color:var(--text-dim); border:1px solid var(--line); padding:4px 9px; border-radius:20px;}
+  #sync-badge.ok{color:var(--summit); border-color:rgba(79,176,160,0.4);}
+  #sync-badge.err{color:var(--danger); border-color:rgba(217,112,90,0.4);}
+
+  .card{
+    background:var(--bg-elev); border:1px solid var(--line); border-radius:var(--radius);
+    padding:18px 20px; margin-bottom:16px;
+  }
+  .card h2{
+    font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-dim);
+    margin:0 0 14px 0; font-weight:600;
+  }
+  .month-picker{display:flex; align-items:center; gap:10px; margin-bottom:6px;}
+  .month-picker button{
+    background:none; border:1px solid var(--line); color:var(--text); border-radius:8px;
+    width:32px; height:32px; cursor:pointer; font-size:15px; line-height:1;
+  }
+  .month-picker button:hover{border-color:var(--blaze); color:var(--blaze);}
+  .month-picker .label{font-size:17px; font-weight:600; min-width:120px; text-align:center;}
+  .month-picker .tag{font-size:11px; color:var(--text-dim); border:1px solid var(--line); padding:2px 8px; border-radius:12px;}
+
+  .goal-row{display:flex; gap:14px; margin-top:12px; flex-wrap:wrap;}
+  .goal-field{flex:1; min-width:130px;}
+  .goal-field label{display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px;}
+  .goal-field input{
+    width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:9px 10px; font-size:15px;
+  }
+  .goal-field input:focus{outline:none; border-color:var(--blaze);}
+  button.primary{
+    background:var(--blaze); color:#1a1204; border:none; border-radius:8px;
+    padding:10px 16px; font-size:14px; font-weight:700; cursor:pointer; margin-top:14px;
+  }
+  button.primary:hover{filter:brightness(1.08);}
+  button.ghost{
+    background:none; border:1px solid var(--line); color:var(--text-dim); border-radius:8px;
+    padding:10px 16px; font-size:13px; cursor:pointer; margin-top:14px; margin-left:8px;
+  }
+  button.ghost:hover{color:var(--text); border-color:var(--text-dim);}
+
+  .progress-block{margin-top:6px;}
+  .progress-item{margin-bottom:16px;}
+  .progress-item:last-child{margin-bottom:0;}
+  .progress-head{display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;}
+  .progress-head .metric{color:var(--text-dim);}
+  .progress-head .nums b{color:var(--text);}
+  .bar-track{height:10px; background:var(--bg); border-radius:6px; overflow:hidden; border:1px solid var(--line);}
+  .bar-fill{height:100%; border-radius:6px; transition:width .5s ease;}
+  .bar-fill.km{background:linear-gradient(90deg, var(--blaze), #F2C572);}
+  .bar-fill.gain{background:linear-gradient(90deg, var(--summit), #7FD6C4);}
+  .pct-pill{font-size:11px; padding:2px 7px; border-radius:10px; margin-left:8px; font-weight:700;}
+  .pct-pill.done{background:var(--summit-dim); color:var(--summit);}
+  .pct-pill.mid{background:var(--blaze-dim); color:var(--blaze);}
+  .pct-pill.low{background:rgba(217,112,90,0.14); color:var(--danger);}
+
+  textarea{
+    width:100%; min-height:110px; background:var(--bg); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:10px; font-family:"SF Mono", Menlo, Consolas, monospace; font-size:12.5px;
+    resize:vertical;
+  }
+  textarea:focus{outline:none; border-color:var(--summit);}
+  .hint{font-size:11.5px; color:var(--text-dim); margin-top:8px; line-height:1.5;}
+  .hint code{background:var(--bg); padding:1px 5px; border-radius:4px; color:var(--summit);}
+  .import-msg{font-size:12.5px; margin-top:10px;}
+  .import-msg.ok{color:var(--summit);}
+  .import-msg.err{color:var(--danger);}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-dim); padding:6px 8px; border-bottom:1px solid var(--line);}
+  td{padding:9px 8px; border-bottom:1px solid var(--line);}
+  tr:last-child td{border-bottom:none;}
+  .empty-row td{color:var(--text-dim); text-align:center; padding:22px 8px;}
+
+  .settings-toggle{font-size:11px; color:var(--text-dim); cursor:pointer; text-decoration:underline; margin-top:4px; display:inline-block;}
+  #settings-panel{display:none; margin-top:14px;}
+  #settings-panel.open{display:block;}
+  #settings-panel input{width:100%; margin-bottom:8px; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px;}
+</style>
+</head>
+<body>
+
+<svg class="topo" viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice">
+  <g fill="none" stroke="#4FB0A0" stroke-width="1">
+    <path d="M-50 650 Q 150 600 250 680 T 550 620 T 900 700" opacity="0.5"/>
+    <path d="M-50 600 Q 150 550 250 630 T 550 570 T 900 650" opacity="0.4"/>
+    <path d="M-50 550 Q 150 500 250 580 T 550 520 T 900 600" opacity="0.3"/>
+    <path d="M-50 500 Q 150 450 250 530 T 550 470 T 900 550" opacity="0.2"/>
+  </g>
+  <g fill="none" stroke="#E0A73B" stroke-width="1">
+    <path d="M-50 150 Q 200 220 350 130 T 900 190" opacity="0.3"/>
+    <path d="M-50 110 Q 200 180 350 90 T 900 150" opacity="0.2"/>
+  </g>
+</svg>
+
+<div class="wrap">
+  <header>
+    <h1>Cột Mốc<span> · </span><span style="color:var(--text-dim); font-size:15px; font-weight:400;">Mileage &amp; Gain</span></h1>
+    <span id="sync-badge">chưa kết nối</span>
+  </header>
+
+  <div class="card">
+    <div class="month-picker">
+      <button id="prevMonth">‹</button>
+      <div class="label" id="monthLabel">Tháng 8, 2026</div>
+      <button id="nextMonth">›</button>
+      <span class="tag" id="monthTag">Hiện tại</span>
+    </div>
+
+    <h2 style="margin-top:18px;">Mục tiêu tháng này</h2>
+    <div class="goal-row">
+      <div class="goal-field">
+        <label>Mileage mục tiêu (km)</label>
+        <input type="number" id="goalKm" step="0.1" placeholder="ví dụ 150">
+      </div>
+      <div class="goal-field">
+        <label>Gain mục tiêu (m)</label>
+        <input type="number" id="goalGain" step="1" placeholder="ví dụ 3000">
+      </div>
+    </div>
+    <button class="primary" id="saveGoal">Lưu mục tiêu</button>
+
+    <div class="progress-block" style="margin-top:22px;">
+      <h2>Tiến trình</h2>
+      <div class="progress-item">
+        <div class="progress-head">
+          <span class="metric">Mileage</span>
+          <span class="nums"><b id="actualKmTxt">0</b> / <span id="goalKmTxt">0</span> km <span class="pct-pill" id="kmPct">0%</span></span>
+        </div>
+        <div class="bar-track"><div class="bar-fill km" id="kmBar" style="width:0%"></div></div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-head">
+          <span class="metric">Elevation gain</span>
+          <span class="nums"><b id="actualGainTxt">0</b> / <span id="goalGainTxt">0</span> m <span class="pct-pill" id="gainPct">0%</span></span>
+        </div>
+        <div class="bar-track"><div class="bar-fill gain" id="gainBar" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Cập nhật dữ liệu từ Coros</h2>
+    <textarea id="importBox" placeholder='{"month":"2026-08","totalDistanceKm":152.3,"totalElevationGainM":3400}'></textarea>
+    <button class="primary" id="importBtn">Cập nhật</button>
+    <div class="import-msg" id="importMsg"></div>
+    <div class="hint">
+      Dán JSON lấy từ Claude (qua Coros MCP). Hỗ trợ 2 dạng:<br>
+      1) Tổng đã tính sẵn: <code>{"month":"2026-08","totalDistanceKm":..,"totalElevationGainM":..}</code><br>
+      2) Danh sách activities, app sẽ tự cộng: <code>[{"distanceKm":12.5,"elevationGainM":320}, ...]</code> — nếu dùng dạng này, dữ liệu sẽ cộng vào tháng đang chọn ở trên.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Dashboard các tháng qua</h2>
+    <table>
+      <thead>
+        <tr><th>Tháng</th><th>Mileage</th><th>%</th><th>Gain</th><th>%</th></tr>
+      </thead>
+      <tbody id="historyBody">
+        <tr class="empty-row"><td colspan="5">Chưa có dữ liệu tháng nào.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <span class="settings-toggle" id="settingsToggle">Cấu hình Supabase (đồng bộ cho widget iOS)</span>
+    <div id="settings-panel">
+      <input type="text" id="supaUrl" placeholder="Supabase URL — https://xxxx.supabase.co">
+      <input type="text" id="supaKey" placeholder="Supabase anon key">
+      <button class="primary" id="saveSupa" style="margin-top:2px;">Lưu &amp; kết nối</button>
+      <div class="hint">
+        Bảng cần tạo trong Supabase (SQL editor):<br>
+        <code>create table mileage_goals (month text primary key, goal_km numeric default 0, goal_gain_m numeric default 0, actual_km numeric default 0, actual_gain_m numeric default 0, updated_at timestamptz default now());</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const LS_GOALS = 'mileage_tracker_goals_v1';
+  const LS_SUPA = 'mileage_tracker_supabase_v1';
+
+  let goals = JSON.parse(localStorage.getItem(LS_GOALS) || '{}'); // { 'YYYY-MM': {goal_km, goal_gain_m, actual_km, actual_gain_m} }
+  let supaCfg = JSON.parse(localStorage.getItem(LS_SUPA) || 'null'); // {url, key}
+
+  const now = new Date();
+  let viewYear = now.getFullYear();
+  let viewMonth = now.getMonth(); // 0-indexed
+
+  const monthKey = (y,m) => `${y}-${String(m+1).padStart(2,'0')}`;
+  const monthNames = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+
+  const el = id => document.getElementById(id);
+
+  function ensureMonth(key){
+    if(!goals[key]) goals[key] = {goal_km:0, goal_gain_m:0, actual_km:0, actual_gain_m:0};
+    return goals[key];
+  }
+
+  function saveLocal(){
+    localStorage.setItem(LS_GOALS, JSON.stringify(goals));
+  }
+
+  function pctClass(p){
+    if(p >= 100) return 'done';
+    if(p >= 60) return 'mid';
+    return 'low';
+  }
+
+  function render(){
+    const key = monthKey(viewYear, viewMonth);
+    const g = ensureMonth(key);
+    el('monthLabel').textContent = `${monthNames[viewMonth]}, ${viewYear}`;
+    const isCurrent = (viewYear === now.getFullYear() && viewMonth === now.getMonth());
+    el('monthTag').textContent = isCurrent ? 'Hiện tại' : (key < monthKey(now.getFullYear(), now.getMonth()) ? 'Đã qua' : 'Sắp tới');
+
+    el('goalKm').value = g.goal_km || '';
+    el('goalGain').value = g.goal_gain_m || '';
+
+    const kmPct = g.goal_km > 0 ? Math.round((g.actual_km / g.goal_km) * 100) : 0;
+    const gainPct = g.goal_gain_m > 0 ? Math.round((g.actual_gain_m / g.goal_gain_m) * 100) : 0;
+
+    el('actualKmTxt').textContent = (g.actual_km || 0).toFixed(1);
+    el('goalKmTxt').textContent = (g.goal_km || 0).toFixed(1);
+    el('kmBar').style.width = Math.min(kmPct,100) + '%';
+    el('kmPct').textContent = kmPct + '%';
+    el('kmPct').className = 'pct-pill ' + pctClass(kmPct);
+
+    el('actualGainTxt').textContent = Math.round(g.actual_gain_m || 0);
+    el('goalGainTxt').textContent = Math.round(g.goal_gain_m || 0);
+    el('gainBar').style.width = Math.min(gainPct,100) + '%';
+    el('gainPct').textContent = gainPct + '%';
+    el('gainPct').className = 'pct-pill ' + pctClass(gainPct);
+
+    renderHistory();
+  }
+
+  function renderHistory(){
+    const body = el('historyBody');
+    const curKey = monthKey(now.getFullYear(), now.getMonth());
+    const keys = Object.keys(goals)
+      .filter(k => k < curKey && (goals[k].goal_km > 0 || goals[k].goal_gain_m > 0 || goals[k].actual_km > 0))
+      .sort((a,b) => b.localeCompare(a));
+
+    if(keys.length === 0){
+      body.innerHTML = '<tr class="empty-row"><td colspan="5">Chưa có dữ liệu tháng nào.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = keys.map(k => {
+      const g = goals[k];
+      const kmPct = g.goal_km > 0 ? Math.round((g.actual_km / g.goal_km) * 100) : 0;
+      const gainPct = g.goal_gain_m > 0 ? Math.round((g.actual_gain_m / g.goal_gain_m) * 100) : 0;
+      const [y,m] = k.split('-');
+      const label = `${monthNames[parseInt(m,10)-1]} ${y}`;
+      return `<tr>
+        <td>${label}</td>
+        <td>${(g.actual_km||0).toFixed(1)} / ${(g.goal_km||0).toFixed(1)} km</td>
+        <td><span class="pct-pill ${pctClass(kmPct)}">${kmPct}%</span></td>
+        <td>${Math.round(g.actual_gain_m||0)} / ${Math.round(g.goal_gain_m||0)} m</td>
+        <td><span class="pct-pill ${pctClass(gainPct)}">${gainPct}%</span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ---- month navigation ----
+  el('prevMonth').addEventListener('click', () => {
+    viewMonth--; if(viewMonth < 0){ viewMonth = 11; viewYear--; }
+    render();
+  });
+  el('nextMonth').addEventListener('click', () => {
+    viewMonth++; if(viewMonth > 11){ viewMonth = 0; viewYear++; }
+    render();
+  });
+
+  // ---- save goal ----
+  el('saveGoal').addEventListener('click', async () => {
+    const key = monthKey(viewYear, viewMonth);
+    const g = ensureMonth(key);
+    g.goal_km = parseFloat(el('goalKm').value) || 0;
+    g.goal_gain_m = parseFloat(el('goalGain').value) || 0;
+    saveLocal();
+    render();
+    await syncToSupabase(key, g);
+  });
+
+  // ---- import Coros JSON ----
+  el('importBtn').addEventListener('click', async () => {
+    const raw = el('importBox').value.trim();
+    const msg = el('importMsg');
+    if(!raw){ msg.textContent = 'Chưa dán dữ liệu.'; msg.className = 'import-msg err'; return; }
+    let data;
+    try{ data = JSON.parse(raw); } catch(e){
+      msg.textContent = 'JSON không hợp lệ: ' + e.message;
+      msg.className = 'import-msg err';
+      return;
+    }
+
+    let targetKey = monthKey(viewYear, viewMonth);
+    let addKm = 0, addGain = 0, isAbsolute = false;
+
+    const numField = (obj, names) => {
+      for(const n of names){ if(obj[n] !== undefined) return parseFloat(obj[n]) || 0; }
+      return 0;
+    };
+
+    if(Array.isArray(data)){
+      data.forEach(act => {
+        addKm += numField(act, ['distanceKm','distance_km','distance']);
+        addGain += numField(act, ['elevationGainM','elevation_gain_m','elevationGain','gain']);
+      });
+    } else if(typeof data === 'object' && data !== null){
+      if(data.month) targetKey = data.month;
+      const totalKm = numField(data, ['totalDistanceKm','distanceKm','distance_km']);
+      const totalGain = numField(data, ['totalElevationGainM','elevationGainM','elevation_gain_m']);
+      if(totalKm || totalGain){
+        addKm = totalKm; addGain = totalGain; isAbsolute = true;
+      }
+    }
+
+    const g = ensureMonth(targetKey);
+    if(isAbsolute){
+      g.actual_km = addKm;
+      g.actual_gain_m = addGain;
+    } else {
+      g.actual_km = (g.actual_km || 0) + addKm;
+      g.actual_gain_m = (g.actual_gain_m || 0) + addGain;
+    }
+    saveLocal();
+
+    if(targetKey === monthKey(viewYear, viewMonth)) render(); else renderHistory();
+
+    msg.textContent = `Đã cập nhật ${targetKey}: ${g.actual_km.toFixed(1)} km, ${Math.round(g.actual_gain_m)} m gain.`;
+    msg.className = 'import-msg ok';
+    el('importBox').value = '';
+
+    await syncToSupabase(targetKey, g);
+  });
+
+  // ---- settings panel ----
+  el('settingsToggle').addEventListener('click', () => {
+    el('settings-panel').classList.toggle('open');
+  });
+  if(supaCfg){
+    el('supaUrl').value = supaCfg.url || '';
+    el('supaKey').value = supaCfg.key || '';
+  }
+  el('saveSupa').addEventListener('click', async () => {
+    const url = el('supaUrl').value.trim().replace(/\/$/,'');
+    const key = el('supaKey').value.trim();
+    if(!url || !key){ return; }
+    supaCfg = {url, key};
+    localStorage.setItem(LS_SUPA, JSON.stringify(supaCfg));
+    await testSupabase();
+    await pullAllFromSupabase();
+  });
+
+  // ---- Supabase sync (raw REST, no SDK needed) ----
+  function setBadge(state, text){
+    const b = el('sync-badge');
+    b.textContent = text;
+    b.className = state;
+  }
+
+  async function testSupabase(){
+    if(!supaCfg){ setBadge('', 'chưa kết nối'); return false; }
+    try{
+      const r = await fetch(`${supaCfg.url}/rest/v1/mileage_goals?select=month&limit=1`, {
+        headers: { 'apikey': supaCfg.key, 'Authorization': `Bearer ${supaCfg.key}` }
+      });
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      setBadge('ok', 'đã kết nối Supabase');
+      return true;
+    } catch(e){
+      setBadge('err', 'lỗi kết nối: ' + e.message);
+      return false;
+    }
+  }
+
+  async function syncToSupabase(key, g){
+    if(!supaCfg) return;
+    try{
+      const r = await fetch(`${supaCfg.url}/rest/v1/mileage_goals`, {
+        method: 'POST',
+        headers: {
+          'apikey': supaCfg.key,
+          'Authorization': `Bearer ${supaCfg.key}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify({
+          month: key,
+          goal_km: g.goal_km || 0,
+          goal_gain_m: g.goal_gain_m || 0,
+          actual_km: g.actual_km || 0,
+          actual_gain_m: g.actual_gain_m || 0,
+          updated_at: new Date().toISOString()
+        })
+      });
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      setBadge('ok', 'đã đồng bộ');
+    } catch(e){
+      setBadge('err', 'lỗi đồng bộ: ' + e.message);
+    }
+  }
+
+  async function pullAllFromSupabase(){
+    if(!supaCfg) return;
+    try{
+      const r = await fetch(`${supaCfg.url}/rest/v1/mileage_goals?select=*`, {
+        headers: { 'apikey': supaCfg.key, 'Authorization': `Bearer ${supaCfg.key}` }
+      });
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      const rows = await r.json();
+      rows.forEach(row => {
+        goals[row.month] = {
+          goal_km: row.goal_km || 0,
+          goal_gain_m: row.goal_gain_m || 0,
+          actual_km: row.actual_km || 0,
+          actual_gain_m: row.actual_gain_m || 0
+        };
+      });
+      saveLocal();
+      render();
+    } catch(e){
+      setBadge('err', 'lỗi tải dữ liệu: ' + e.message);
+    }
+  }
+
+  // ---- init ----
+  render();
+  if(supaCfg){
+    testSupabase().then(ok => { if(ok) pullAllFromSupabase(); });
+  }
+})();
+</script>
+</body>
+</html>
