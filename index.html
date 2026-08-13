@@ -84,14 +84,21 @@
   .progress-head{display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;}
   .progress-head .metric{color:var(--text-dim);}
   .progress-head .nums b{color:var(--text);}
+  .bar-wrap{position:relative;}
   .bar-track{height:10px; background:var(--bg); border-radius:6px; overflow:hidden; border:1px solid var(--line);}
   .bar-fill{height:100%; border-radius:6px; transition:width .5s ease;}
   .bar-fill.km{background:linear-gradient(90deg, var(--blaze), #F2C572);}
   .bar-fill.gain{background:linear-gradient(90deg, var(--summit), #7FD6C4);}
+  .pace-marker{position:absolute; top:-3px; bottom:-3px; width:2px; background:#F4F7F5; opacity:0.9; z-index:3; border-radius:1px; box-shadow:0 0 4px rgba(0,0,0,0.5); transition:left .5s ease;}
   .pct-pill{font-size:11px; padding:2px 7px; border-radius:10px; margin-left:8px; font-weight:700;}
   .pct-pill.done{background:var(--summit-dim); color:var(--summit);}
   .pct-pill.mid{background:var(--blaze-dim); color:var(--blaze);}
   .pct-pill.low{background:rgba(217,112,90,0.14); color:var(--danger);}
+  .pace-row{display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:11.5px; color:var(--text-dim); flex-wrap:wrap; gap:6px;}
+  .pace-status{font-size:10.5px; padding:2px 8px; border-radius:10px; font-weight:700; white-space:nowrap;}
+  .pace-status.ahead{background:var(--summit-dim); color:var(--summit);}
+  .pace-status.ontrack{background:var(--blaze-dim); color:var(--blaze);}
+  .pace-status.behind{background:rgba(217,112,90,0.14); color:var(--danger);}
 
   textarea{
     width:100%; min-height:110px; background:var(--bg); border:1px solid var(--line); color:var(--text);
@@ -166,14 +173,28 @@
           <span class="metric">Mileage</span>
           <span class="nums"><b id="actualKmTxt">0</b> / <span id="goalKmTxt">0</span> km <span class="pct-pill" id="kmPct">0%</span></span>
         </div>
-        <div class="bar-track"><div class="bar-fill km" id="kmBar" style="width:0%"></div></div>
+        <div class="bar-wrap">
+          <div class="bar-track"><div class="bar-fill km" id="kmBar" style="width:0%"></div></div>
+          <div class="pace-marker" id="kmMarker" style="left:0%"></div>
+        </div>
+        <div class="pace-row">
+          <span id="kmPaceTxt"></span>
+          <span class="pace-status" id="kmPaceStatus"></span>
+        </div>
       </div>
       <div class="progress-item">
         <div class="progress-head">
           <span class="metric">Elevation gain</span>
           <span class="nums"><b id="actualGainTxt">0</b> / <span id="goalGainTxt">0</span> m <span class="pct-pill" id="gainPct">0%</span></span>
         </div>
-        <div class="bar-track"><div class="bar-fill gain" id="gainBar" style="width:0%"></div></div>
+        <div class="bar-wrap">
+          <div class="bar-track"><div class="bar-fill gain" id="gainBar" style="width:0%"></div></div>
+          <div class="pace-marker" id="gainMarker" style="left:0%"></div>
+        </div>
+        <div class="pace-row">
+          <span id="gainPaceTxt"></span>
+          <span class="pace-status" id="gainPaceStatus"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -248,6 +269,32 @@
     return 'low';
   }
 
+  function daysInMonth(y, m){
+    return new Date(y, m + 1, 0).getDate();
+  }
+
+  // Tính mốc "dự kiến" theo tiến độ thời gian tuyến tính trong tháng:
+  // ví dụ goal 350km/31 ngày, đến ngày 13 thì dự kiến phải đạt (350/31)*13
+  function computeExpected(y, m, goalVal){
+    const totalDays = daysInMonth(y, m);
+    const thisKey = monthKey(y, m);
+    const curKey = monthKey(now.getFullYear(), now.getMonth());
+    let elapsedDays;
+    if(thisKey < curKey) elapsedDays = totalDays;      // tháng đã qua hẳn -> tính full tháng
+    else if(thisKey > curKey) elapsedDays = 0;          // tháng tương lai -> chưa có gì
+    else elapsedDays = now.getDate();                   // tháng hiện tại -> tính đến hôm nay
+    const expectedPct = totalDays > 0 ? (elapsedDays / totalDays) * 100 : 0;
+    const expectedValue = (goalVal || 0) * (totalDays > 0 ? elapsedDays / totalDays : 0);
+    return { elapsedDays, totalDays, expectedPct, expectedValue };
+  }
+
+  function paceStatus(actualPct, expectedPct){
+    const diff = actualPct - expectedPct;
+    if(diff >= 3) return { cls:'ahead', label:'Vượt tiến độ' };
+    if(diff <= -3) return { cls:'behind', label:'Chậm tiến độ' };
+    return { cls:'ontrack', label:'Đúng tiến độ' };
+  }
+
   function render(){
     const key = monthKey(viewYear, viewMonth);
     const g = ensureMonth(key);
@@ -272,6 +319,39 @@
     el('gainBar').style.width = Math.min(gainPct,100) + '%';
     el('gainPct').textContent = gainPct + '%';
     el('gainPct').className = 'pct-pill ' + pctClass(gainPct);
+
+    // ---- mốc dự kiến (pace marker) ----
+    const kmExp = computeExpected(viewYear, viewMonth, g.goal_km);
+    const kmMarker = el('kmMarker');
+    if(g.goal_km > 0){
+      kmMarker.style.display = 'block';
+      kmMarker.style.left = Math.min(kmExp.expectedPct, 100) + '%';
+      const kmSt = paceStatus(kmPct, kmExp.expectedPct);
+      el('kmPaceTxt').textContent = `Dự kiến đến hôm nay: ${kmExp.expectedValue.toFixed(1)} km (ngày ${kmExp.elapsedDays}/${kmExp.totalDays})`;
+      el('kmPaceStatus').textContent = kmSt.label;
+      el('kmPaceStatus').className = 'pace-status ' + kmSt.cls;
+    } else {
+      kmMarker.style.display = 'none';
+      el('kmPaceTxt').textContent = 'Chưa đặt mục tiêu để tính dự kiến.';
+      el('kmPaceStatus').textContent = '';
+      el('kmPaceStatus').className = 'pace-status';
+    }
+
+    const gainExp = computeExpected(viewYear, viewMonth, g.goal_gain_m);
+    const gainMarker = el('gainMarker');
+    if(g.goal_gain_m > 0){
+      gainMarker.style.display = 'block';
+      gainMarker.style.left = Math.min(gainExp.expectedPct, 100) + '%';
+      const gainSt = paceStatus(gainPct, gainExp.expectedPct);
+      el('gainPaceTxt').textContent = `Dự kiến đến hôm nay: ${Math.round(gainExp.expectedValue)} m (ngày ${gainExp.elapsedDays}/${gainExp.totalDays})`;
+      el('gainPaceStatus').textContent = gainSt.label;
+      el('gainPaceStatus').className = 'pace-status ' + gainSt.cls;
+    } else {
+      gainMarker.style.display = 'none';
+      el('gainPaceTxt').textContent = 'Chưa đặt mục tiêu để tính dự kiến.';
+      el('gainPaceStatus').textContent = '';
+      el('gainPaceStatus').className = 'pace-status';
+    }
 
     renderHistory();
   }
